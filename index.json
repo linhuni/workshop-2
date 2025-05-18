@@ -1,0 +1,71 @@
+[
+{
+	"uri": "//localhost:1313/",
+	"title": " Route 53 Failover Routing ",
+	"tags": [],
+	"description": "",
+	"content": "Route 53 Failover Routing In this workshop, we will learn how to use Route53 to route website traffic in the event of a failure, based on the Health Check feature.\nBy the end of this workshop, we will be able to:\nRegister and configure custom domains in Amazon Route 53. Set up health check to monitor the availability of a primary website. Trigger email alerts when the primary website becomes unhealthy. Implement failover routing to automatically redirect traffic to a secondary (backup) website in case of failure. Main Content Introduction Register and configure domains Set up health checks Set up email alerts Implement failover routing to automatically redirect traffic Verify development Clean up resources "
+},
+{
+	"uri": "//localhost:1313/1-introduction/",
+	"title": "Introduction",
+	"tags": [],
+	"description": "",
+	"content": "Overview This workshop will guide you through deploying a failover routing system for a static website using Amazon Route 53, ensuring website availability even in the event of a failure. When the primary website encounters an issue, the system will automatically redirect traffic to a backup website, maintaining a seamless user experience without manual intervention.\nServices are used in the workshop:\nAmazon S3: used to host and deploy the primary (backup) website\nAmazon EC2: used to host and deploy the secondary (backup) website\nAmazon Route 53: register a domain, create DNS records, and configure failover routing\nAmazon SNS (Simple Notification Service): send notification whenever the primary website has problem\nAWS CLI (Command Line Interface): do commands\nWorkflow Deploy 2 websites: the primary and secondary ared deployed on S3 and EC2.\nRegister and configure domain on Route53: assign the domain to the primary website and configure the corresponding DNS zone.\nSet up the health check for the primary web: examine the status of the website\nConfigure SNS and CloudWatch to send alert notification: whenever the status of healthcheck is changed, it will send a notification to our email\nConfigure failover routing: automatically direct to the backup website hwen the health check is not good.\nVerify deployment: examine all of resouces created\nClean up: clean up resources\n"
+},
+{
+	"uri": "//localhost:1313/2-launch-websites/",
+	"title": "Website preparation",
+	"tags": [],
+	"description": "",
+	"content": "Create a static website on S3 This bucket MUST have a SAME name with the domain\naws s3api create-bucket \\ \u0026ndash;bucket linhbaby53.com \\ \u0026ndash;region ap-southeast-1 \u0026ndash;create-bucket-configuration LocationConstraint=ap-southeast-1 : create s3 bucket ( You have to use LocationConstraint=location for creating bucket in regions outside of us-east-1)\naws s3 website s3://linhbaby53.com \u0026ndash;index-document trangchu.html: enable static website hosting and set the default page is trangchu.html\naws sapi put-public-access-block \\ \u0026ndash;bucket linhbaby53.com \\ \u0026ndash;public-access-block-configuration \u0026ldquo;BlockPublicAcls=false, IgnorePublicAcls=false, BlockPublicPolicy=false, RestrictPublicBuckets=false\u0026rdquo;: turn off the block public access mode\naws sapi put-bucket-policy \u0026ndash;bucket linhbaby53.com \u0026ndash;policy file://s3PublicPolicy.json: set the public policy to allow public read access. The policy is below\n{ \u0026#34;Version\u0026#34;: \u0026#34;2012-10-17\u0026#34;, \u0026#34;Statement\u0026#34;: [ { \u0026#34;Sid\u0026#34;: \u0026#34;PublicReadGetObject\u0026#34;, \u0026#34;Effect\u0026#34;: \u0026#34;Allow\u0026#34;, \u0026#34;Principal\u0026#34;: \u0026#34;*\u0026#34;, \u0026#34;Action\u0026#34;: [ \u0026#34;s3:GetObject\u0026#34; ], \u0026#34;Resource\u0026#34;: [ \u0026#34;arn:aws:s3:::Bucket-Name/*\u0026#34; ] } ] } aws s3 sync ./website-old s3://linhbaby53.com/: recursively copies new and updated files from the source directory to the destination This is our website after successfully deployed it on S3.\nCreate a static website on EC2 Follow this link to create a website on EC2 with bash script \u0026mdash;\u0026gt; Deploy static website on EC2\n"
+},
+{
+	"uri": "//localhost:1313/3-domain-configuration/",
+	"title": "Domain configuration",
+	"tags": [],
+	"description": "",
+	"content": " I\u0026rsquo;ve ready registered a domain. If you haven\u0026rsquo;t had it yet, check this link: Register a domian with aws CLI. When you register a domain, Amazon Route 53 creates a Route 53 hosted zone that has the same name as the domain\nCreate a host zone ( if you\u0026rsquo;ve already had a host zone) aws route53 create-hosted-zone \\ \u0026ndash;name linhbaby53.com \\ \u0026ndash;caller-reference \u0026ldquo;2025-05-13\u0026rdquo; \\ \u0026ndash;hosted-zone-config Comment=\u0026ldquo;Failover routing\u0026rdquo;: Create a host zone, it must have the SAME name with the domain Create a healthcheck aws route53 create-health-check \u0026ndash;caller-reference 2025-05-13 \u0026ndash;health-check-config file://create-health-check.json: Create a health-check for the primary website which is the EC2 website. The JSON file is below { \u0026#34;IPAddress\u0026#34;: \u0026#34;13.212.95.27\u0026#34;, \u0026#34;Port\u0026#34;: 80, \u0026#34;Type\u0026#34;: \u0026#34;HTTP\u0026#34;, \u0026#34;ResourcePath\u0026#34;: \u0026#34;/\u0026#34;, \u0026#34;RequestInterval\u0026#34;: 30, \u0026#34;FailureThreshold\u0026#34;: 3 } To ensure your domain name actually work on the internet, you MUST map the NS (Name server) to your domain. \u0026mdash;\u0026gt; Mapping the NS to the domain\n"
+},
+{
+	"uri": "//localhost:1313/4-email-alert/",
+	"title": "Setting up email alert",
+	"tags": [],
+	"description": "",
+	"content": "Overview In this step, we will set up an email alert, whenever the primary website\u0026rsquo;s health check is unhealthy, it will send us an notification about it through email.\nSetting up alert email aws sns create-topic \\ \u0026ndash;name health-check-noti : create a topic named \u0026ldquo;health-check-noti\u0026rdquo;\nsaws sns subscribe \u0026ndash;topic-arn arn:aws:sns: ap-southeast-1:021891590365:health-check-noti \u0026ndash;protocol email \\ \u0026ndash;notification-endpoint tanglinh417@gmail.com : subscribe the email address to the topic\nConfigure CloudWatch to send an Amazon SNS alert when the status of a health check is unhealthy.\nThen you will receive an email to subscribe the topic, click on Confirm subscription to confirm.\n"
+},
+{
+	"uri": "//localhost:1313/5-failover-routing/",
+	"title": "Establish failover routing",
+	"tags": [],
+	"description": "",
+	"content": "Overview This is the final step in this workshop, which is establishing failover routing\nEstablish failover routing This command applies changes to DNS records for the domain, allowing to route traffic to a specific resource — which are EC2 website and S3 website. This is the one for the primary website. The JSON file is below\n{ \u0026#34;Comment\u0026#34;: \u0026#34;primary website\u0026#34;, \u0026#34;Changes\u0026#34;: [ { \u0026#34;Action\u0026#34;: \u0026#34;UPSERT\u0026#34;, \u0026#34;ResourceRecordSet\u0026#34;: { \u0026#34;Name\u0026#34;: \u0026#34;linhbaby53.com\u0026#34;, \u0026#34;Type\u0026#34;: \u0026#34;A\u0026#34;, \u0026#34;TTL\u0026#34;: 60, \u0026#34;SetIdentifier\u0026#34;:\u0026#34;Primary-Website\u0026#34;, \u0026#34;Failover\u0026#34;: \u0026#34;PRIMARY\u0026#34;, \u0026#34;ResourceRecords\u0026#34;: [{\u0026#34;Value\u0026#34;: \u0026#34;13.212.95.27\u0026#34;}], \u0026#34;HealthCheckId\u0026#34;: \u0026#34;d399a01f-e5e8-448f-a2e0-0cc98ef66c64\u0026#34; } } ] } This is the one for the secondary website. The JSON file is below { \u0026#34;Comment\u0026#34;: \u0026#34;secondary website\u0026#34;, \u0026#34;Changes\u0026#34;: [ { \u0026#34;Action\u0026#34;: \u0026#34;UPSERT\u0026#34;, \u0026#34;ResourceRecordSet\u0026#34;: { \u0026#34;Name\u0026#34;: \u0026#34;linhbaby53.com\u0026#34;, \u0026#34;Type\u0026#34;: \u0026#34;A\u0026#34;, \u0026#34;SetIdentifier\u0026#34;:\u0026#34;Secondary-Website\u0026#34;, \u0026#34;Failover\u0026#34;: \u0026#34;SECONDARY\u0026#34;, \u0026#34;AliasTarget\u0026#34;: { \u0026#34;HostedZoneId\u0026#34;: \u0026#34;Z1WCIGYICN2BYD\u0026#34;, \u0026#34;DNSName\u0026#34;: \u0026#34;s3-website-ap-southeast-2.amazonaws.com\u0026#34;, \u0026#34;EvaluateTargetHealth\u0026#34;: true } } } ] } "
+},
+{
+	"uri": "//localhost:1313/6-verify-development/",
+	"title": "Verify development",
+	"tags": [],
+	"description": "",
+	"content": "Verify development First, we will stop the EC2 instance, which will make the healthcheck becomes unhealthy. Then we will receive an alert email and the domain will switch to the s3 endpoint. I will use the command below to check if the website is switched or not.\nIt shows that the IPs of the website has s3 hostname\n"
+},
+{
+	"uri": "//localhost:1313/7-clean-up/",
+	"title": "Clean up",
+	"tags": [],
+	"description": "",
+	"content": "Clean up Follow the instructions below to clean up the resources "
+},
+{
+	"uri": "//localhost:1313/categories/",
+	"title": "Categories",
+	"tags": [],
+	"description": "",
+	"content": ""
+},
+{
+	"uri": "//localhost:1313/tags/",
+	"title": "Tags",
+	"tags": [],
+	"description": "",
+	"content": ""
+}]

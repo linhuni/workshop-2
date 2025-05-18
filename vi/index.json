@@ -1,0 +1,71 @@
+[
+{
+	"uri": "//localhost:1313/vi/",
+	"title": "Route 53 Failover Routing",
+	"tags": [],
+	"description": "",
+	"content": "Sử dụng Route 53 điều hướng trang web Trong workshop này, chúng ta sẽ sử dụng Route 53 để điều hướng trang web khi trang web gặp lỗi, dựa trên tính năng Health check.\nKết thúc workshop, bạn sẽ có thể:\nĐăng ký và cấu hình tên miền tùy chỉnh trên Amazon Route 53. Thiết lập health checks để giám sát khả năng truy cập của website chính. Kích hoạt cảnh báo qua email khi website chính không còn hoạt động. Triển khai định tuyến dự phòng để tự động chuyển hướng người dùng sang website phụ khi website chính gặp sự cố. Nội dung chính Giới thiệu Đăng ký miền trên Amazon Route 53 Thiết lập health check Kích hoạt email cảnh báo Thiết lập điều hướng lưu lượng khi xảy ra sự cố Kiểm tra Dọn dẹp tài nguyên "
+},
+{
+	"uri": "//localhost:1313/vi/1-introduction/",
+	"title": "Giới thiệu",
+	"tags": [],
+	"description": "",
+	"content": "Tổng quan Workshop sẽ này hướng dẫn bạn cách triển khai một hệ thống định tuyến dự phòng (failover routing) cho website tĩnh, sử dụng dịch vụ Amazon Route 53, nhằm đảm bảo khả năng hoạt động cuả website kể cả khi gặp lỗi. Khi website chính gặp sự cố, hệ thống sẽ tự động chuyển hướng lưu lượng truy cập sang một website dự phòng, giúp duy trì trải nghiệm người dùng liên tục mà không cần can thiệp.\nNhững dịch vụ được sử dụng trong workshop bao gồm:\nAmazon S3: lưu trữ và triển khai website phụ\nAmazon EC2: lữu trữ và triền khai website chính\nAmazon Route 53: đăng ký tên miền, tạo bản ghi DNS và cấu hình định tuyến dự phòng\nAmazon SNS (Simple Notification Service): gửi cảnh báo qua email khi website bị lỗi\nAWS CLI (Command Line Interface): thực hiện lệnh\nMô tả tiến trình Triển khai 2 website tĩnh: website chính và phụ sẽ được lưu trữ trên Amazon S3 và EC2 truy cập qua public endpoint\nĐăng ký và cấu hình tên miền trên Route 53: gán tên miền cho website chính và cấu hình vùng DNS tương ứng\nThiết lập Health Check cho website chính: kiểm tra trạng thái của website chính theo định kỳ, nếu không phản hồi hoặc phản hồi lỗi thì sẽ bị đánh dấu là \u0026ldquo;unhealthy\u0026rdquo;\nTạo cảnh báo email qua SNS kết hợp với CloudWatch: khi trạng thái của health check thay đổi, nó sẽ rung chuông cảnh báo đến CloudWatch, sau đó CloudWatch sẽ gửi thông báo đến SNS\nCấu hình định tuyến dự phòng (Failover Routing): tự động chuyển hướng sang website phụ khi website chính có vấn đề\nKiểm tra hoạt động: sau khi website chính được triển khai, nó sẽ được ngưng hoạt động để nhận email cảnh báo và chuyển hướng sang web phụ\nDọn dẹp tài nguyên: xoá các tài nguyên đã sử dụng\n"
+},
+{
+	"uri": "//localhost:1313/vi/2-launch-websites/",
+	"title": "Triển khai website",
+	"tags": [],
+	"description": "",
+	"content": "Triển khai website trên S3 Bucket PHẢI có tên GIỐG với tên của domain\naws s3api create-bucket \\ \u0026ndash;bucket linhbaby53.com \\ \u0026ndash;region ap-southeast-1 \u0026ndash;create-bucket-configuration LocationConstraint=ap-southeast-1 : tạo bucket S3 (Lưu ý: bạn phải sử dụng LocationConstraint=location khi tạo bucket ở các vùng ngoài us-east-1)\naws s3 website s3://linhbaby53.com \u0026ndash;index-document trangchu.html: bật tính năng hosting website tĩnh và đặt trangchu.html làm trang mặc định\naws sapi put-public-access-block \\ \u0026ndash;bucket linhbaby53.com \\ \u0026ndash;public-access-block-configuration \u0026ldquo;BlockPublicAcls=false, IgnorePublicAcls=false, BlockPublicPolicy=false, RestrictPublicBuckets=false\u0026rdquo;: tắt chế độ block public access\naws sapi put-bucket-policy \u0026ndash;bucket linhbaby53.com \u0026ndash;policy file://s3PublicPolicy.json: gán public policy để cho phép truy cập công khai dạng chỉ đọc. Copy file tệp JSON ở dưới\n{ \u0026#34;Version\u0026#34;: \u0026#34;2012-10-17\u0026#34;, \u0026#34;Statement\u0026#34;: [ { \u0026#34;Sid\u0026#34;: \u0026#34;PublicReadGetObject\u0026#34;, \u0026#34;Effect\u0026#34;: \u0026#34;Allow\u0026#34;, \u0026#34;Principal\u0026#34;: \u0026#34;*\u0026#34;, \u0026#34;Action\u0026#34;: [ \u0026#34;s3:GetObject\u0026#34; ], \u0026#34;Resource\u0026#34;: [ \u0026#34;arn:aws:s3:::Bucket-Name/*\u0026#34; ] } ] } aws s3 sync ./website-old s3://linhbaby53.com/: tải các tệp và thư mục lên s3 Đây là giao diện website của chúng ta sau khi triển khai thành công trên S3\nTriển khai website trên EC2 Làm theo hướng dẫn sau để triển khai website trên EC2 bằng Bash script: \u0026mdash;\u0026gt; Triền khai website trên EC2 với bash scipt\nĐây là giao diện website của chúng ta sau khi triển khai thành công trên EC2\n"
+},
+{
+	"uri": "//localhost:1313/vi/3-domain-configuration/",
+	"title": "Khởi tạo EC2",
+	"tags": [],
+	"description": "",
+	"content": "Chuẩn bị Nếu bạn chưa có tên miền, bấm vào link này để xem hướng dẫn đăng ký tên miền Đăng ký miền trên Route 53. Sau khi bạn đăng ký thành công tên miền, AWS sẽ tạo hosted zone cho bạn\nTạo hosted zone ( Bạn có thể bỏ qua bước này nếu đã có hosted zone) aws route53 create-hosted-zone \\ \u0026ndash;name linhbaby53.com \\ \u0026ndash;caller-reference \u0026ldquo;2025-05-13\u0026rdquo; \\ \u0026ndash;hosted-zone-config Comment=\u0026ldquo;Failover routing\u0026rdquo;: Tạo hosted zone có tên GIỐNG với tên miền. Tạo healthcheck cho website chính aws route53 create-health-check \u0026ndash;caller-reference 2025-05-13 \u0026ndash;health-check-config file://create-health-check.json: Tạo health check cho website chính, là website được triển khai trên EC2. File JSON cấu hình như sau: { \u0026#34;IPAddress\u0026#34;: \u0026#34;13.212.95.27\u0026#34;, \u0026#34;Port\u0026#34;: 80, \u0026#34;Type\u0026#34;: \u0026#34;HTTP\u0026#34;, \u0026#34;ResourcePath\u0026#34;: \u0026#34;/\u0026#34;, \u0026#34;RequestInterval\u0026#34;: 30, \u0026#34;FailureThreshold\u0026#34;: 3 } Để đảm bảo tên miền của bạn thực sự hoạt động trên Internet, bạn phải GÁN các bản ghi NS (Name Server) vào tên miền của mình. Đây là hưỡng dẫn gán tên các bản ghi NS vào tên miền: Gán NS vào tên miền\n"
+},
+{
+	"uri": "//localhost:1313/vi/4-email-alert/",
+	"title": "Thiết lập email cảnh báo",
+	"tags": [],
+	"description": "",
+	"content": "Tổng quan Trong bước này, chúng ta sẽ thiết lập cảnh báo qua email. Mỗi khi health check của website chính gặp sự cố, một thông báo sẽ được gửi đến email của bạn\nThiết lập email cảnh báo aws sns create-topic \\ \u0026ndash;name health-check-noti : Tạo một chủ đề (topic) SNS tên là health-check-noti\nsaws sns subscribe \u0026ndash;topic-arn arn:aws:sns: ap-southeast-1:021891590365:health-check-noti \u0026ndash;protocol email \\ \u0026ndash;notification-endpoint tanglinh417@gmail.com : Đăng ký địa chỉ email để nhận thông báo từ topic vừa tạo\nSau đó, bạn sẽ nhận được một email xác nhận từ AWS. Hãy nhấn vào link Confirm subscription để đăng ký nhận cảnh báo.\n"
+},
+{
+	"uri": "//localhost:1313/vi/5-failover-routing/",
+	"title": "Triển khai điều hướng sự cố",
+	"tags": [],
+	"description": "",
+	"content": "Overview Triển khai điều hướng khi có sự cố xảy ra\nEstablish failover routing Cập nhật các bản ghi DNS cho tên miền, cho phép định tuyến lưu lượng truy cập đến website triển khai trên EC2 và website tĩnh trên S3. Đây là bản ghi dành cho website chính. Bên dưới là tệp JSON sử udngj cho website chính.\n{ \u0026#34;Comment\u0026#34;: \u0026#34;primary website\u0026#34;, \u0026#34;Changes\u0026#34;: [ { \u0026#34;Action\u0026#34;: \u0026#34;UPSERT\u0026#34;, \u0026#34;ResourceRecordSet\u0026#34;: { \u0026#34;Name\u0026#34;: \u0026#34;linhbaby53.com\u0026#34;, \u0026#34;Type\u0026#34;: \u0026#34;A\u0026#34;, \u0026#34;TTL\u0026#34;: 60, \u0026#34;SetIdentifier\u0026#34;:\u0026#34;Primary-Website\u0026#34;, \u0026#34;Failover\u0026#34;: \u0026#34;PRIMARY\u0026#34;, \u0026#34;ResourceRecords\u0026#34;: [{\u0026#34;Value\u0026#34;: \u0026#34;13.212.95.27\u0026#34;}], \u0026#34;HealthCheckId\u0026#34;: \u0026#34;d399a01f-e5e8-448f-a2e0-0cc98ef66c64\u0026#34; } } ] } Đây là file JSON sử dụng cho website phụ { \u0026#34;Comment\u0026#34;: \u0026#34;secondary website\u0026#34;, \u0026#34;Changes\u0026#34;: [ { \u0026#34;Action\u0026#34;: \u0026#34;UPSERT\u0026#34;, \u0026#34;ResourceRecordSet\u0026#34;: { \u0026#34;Name\u0026#34;: \u0026#34;linhbaby53.com\u0026#34;, \u0026#34;Type\u0026#34;: \u0026#34;A\u0026#34;, \u0026#34;SetIdentifier\u0026#34;:\u0026#34;Secondary-Website\u0026#34;, \u0026#34;Failover\u0026#34;: \u0026#34;SECONDARY\u0026#34;, \u0026#34;AliasTarget\u0026#34;: { \u0026#34;HostedZoneId\u0026#34;: \u0026#34;Z1WCIGYICN2BYD\u0026#34;, \u0026#34;DNSName\u0026#34;: \u0026#34;s3-website-ap-southeast-2.amazonaws.com\u0026#34;, \u0026#34;EvaluateTargetHealth\u0026#34;: true } } } ] } "
+},
+{
+	"uri": "//localhost:1313/vi/6-verify-development/",
+	"title": "Dọn Dẹp Tài Nguyên",
+	"tags": [],
+	"description": "",
+	"content": "Kiểm tra Để kiểm tra, chúng ta sẽ dừng instance EC2 chứa website, lúc này health check sẽ chuyển sang trạng thái \u0026ldquo;unhealthy\u0026rdquo; và chúng ta sẽ nhận được email cảnh báo. Sau đó, miền sẽ được chuyển hướng sang endpoint của S3. Sử dụng 2 câu lệnh bên dưới để kiểm tra xem miền đã chuyển endpoint hay chưa. Như đã thấy, Ips này có hostname của s3\n"
+},
+{
+	"uri": "//localhost:1313/vi/7-clean-up/",
+	"title": "Dọn dẹp tài nguyên",
+	"tags": [],
+	"description": "",
+	"content": "Dọn dẹp tài nguyên Làm theo hướng dẫn sau để xoá những tài nguyên đã dùng "
+},
+{
+	"uri": "//localhost:1313/vi/categories/",
+	"title": "Categories",
+	"tags": [],
+	"description": "",
+	"content": ""
+},
+{
+	"uri": "//localhost:1313/vi/tags/",
+	"title": "Tags",
+	"tags": [],
+	"description": "",
+	"content": ""
+}]
